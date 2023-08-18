@@ -1,0 +1,100 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - 'deployment'
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v2
+      - 
+        name: test
+        run: docker-compose up --exit-code-from api
+        shell: bash
+        env:
+          SECRET: ${secrets.SECRET}
+          CLOUDINARY_CLOUD_NAME: ${secrets.CLOUDINARY_CLOUD_NAME}
+          CLOUDINARY_API_KEY: ${secrets.CLOUDINARY_API_KEY}
+          CLOUDINARY_API_SECRET: ${secrets.CLOUDINARY_API_SECRET}
+          GOOGLE_CLIENT_ID: ${secrets.GOOGLE_CLIENT_ID}
+          GOOGLE_CLIENT_SECRET: ${secrets.GOOGLE_CLIENT_SECRET}
+          AUTH_EMAIL: ${secrets.AUTH_EMAIL}
+          AUTH_PASS: ${secrets.AUTH_PASS}
+          CURRENTURL: http://localhost:3000/
+      -
+        name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+      -
+        name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
+      -
+        name: Login to DockerHub
+        uses: docker/login-action@v1
+        with:
+          username: ${{ secrets.DOCKER_ID }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      -
+        name: Push old version to old image
+        run: |
+          docker pull mostafaelnashar/larry-api:latest
+          docker tag mostafaelnashar/larry-api:latest mostafaelnashar/larry-api:old
+          docker push mostafaelnashar/larry-api:old
+          docker pull mostafaelnashar/larry-router:latest
+          docker tag mostafaelnashar/larry-router:latest mostafaelnashar/larry-router:old
+          docker push mostafaelnashar/larry-router:old
+          docker pull mostafaelnashar/larry-client:latest
+          docker tag mostafaelnashar/larry-client:latest mostafaelnashar/larry-client:old
+          docker push mostafaelnashar/larry-client:old
+      -
+        name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: ./client
+          push: true
+          tags: mostafaelnashar/larry-client:latest
+      -
+        name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: ./api
+          push: true
+          tags: mostafaelnashar/larry-api:latest     
+      -
+        name: Build and push
+        uses: docker/build-push-action@v2
+        with:
+          context: ./router
+          push: true
+          tags: mostafaelnashar/larry-router:latest
+
+      -
+        name: Create ZIP deployment package
+        run: zip -r deploy_package.zip ./
+      -          
+        name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_KEY }}
+          aws-region: us-east-1
+      -
+        name: Upload package to S3 bucket
+        run: aws s3 cp deploy_package.zip s3://elasticbeanstalk-us-east-1-284489073366/
+
+      -
+        name: Create new ElasticBeanstalk Application Version
+        run: |
+          aws elasticbeanstalk create-application-version \
+          --application-name Larry \
+          --source-bundle S3Bucket="elasticbeanstalk-us-east-1-284489073366",S3Key="deploy_package.zip" \
+          --version-label "larry-${{ github.sha }}" \
+          --description "larry-${{ github.event.repository.updated_at}}"
+
+      -
+        name: Deploy new ElasticBeanstalk Application Version
+        run: aws elasticbeanstalk update-environment --environment-name Larry-env --version-label "larry-${{ github.sha }}"

@@ -1,0 +1,49 @@
+version: '3'
+
+services:
+
+  mongo:
+    image: mongo
+    restart: always
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: example
+
+  api:
+    depends_on:
+      - "mongo"
+    build:
+      dockerfile: 'Dockerfile.dev'
+      context: './api'
+    volumes:
+      - /app/node_modules
+      - ./api:/app
+    environment:
+      - MONGOCONNECT=mongodb://root:example@mongo:27017/
+      - PORT=3000
+      - SECRET=${SECRET}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - AUTH_EMAIL=${AUTH_EMAIL}
+      - AUTH_PASS=${AUTH_PASS}
+      - CURRENTURL=${CURRENTURL}
+
+  # client:
+  #   stdin_open: true
+  #   build:
+  #     dockerfile: 'Dockerfile.dev'
+  #     context: './client'
+  #   volumes:
+  #    - /app/node_modules
+  #    - ./client:/app
+
+  # router:
+  #   restart: always
+  #   build:
+  #     dockerfile: 'Dockerfile.dev'
+  #     context: './router'
+  #   ports:
+  #     - '3050:80'
